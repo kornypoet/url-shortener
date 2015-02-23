@@ -11,5 +11,9 @@ func main() {
     return "Hello World"
   })
 
+	m.Get("/shorten/:path", func(params martini.Params) string {
+    return "Shortening path " + params["path"]
+  })
+
   m.Run()
 }
