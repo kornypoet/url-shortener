@@ -1,19 +1,19 @@
 package main
 
 import (
-	"github.com/go-martini/martini"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
-  m := martini.Classic()
+	router := gin.Default()
 
-  m.Get("/" , func() string {
-    return "Hello World"
+  router.GET("/" , func(c *gin.Context) {
+    c.String(200, "Hello World")
   })
 
-	m.Get("/shorten/:path", func(params martini.Params) string {
-    return "Shortening path " + params["path"]
+	router.GET("/shorten/:path", func(c *gin.Context) {
+    c.String(200, "Shortening path " + c.Params.ByName("path"))
   })
 
-  m.Run()
+  router.Run(":8080")
 }
