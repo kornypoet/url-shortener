@@ -101,7 +101,7 @@ func main() {
       c.String(400, "Malformed Url")
     } else {
       id := createId(json.Url)
-      doc := UrlDoc{id, json.Url, url.Host, 1}
+      doc := UrlDoc{id, json.Url, url.Host, 0}
       result, err := findOrCreateRecord(doc, coll)
       if err != nil {
         fmt.Println(err)
