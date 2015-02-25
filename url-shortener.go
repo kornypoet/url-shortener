@@ -1,6 +1,6 @@
 package main
 
-import (
+import(
   "crypto/md5"
   "encoding/hex"
   "fmt"
@@ -11,25 +11,53 @@ import (
 )
 
 type JSONBody struct {
-  Url string `json:"url" binding:"required"`
+  Url   string `json:"url" binding:"required"`
+  Path  string `json:"path"`
+  Count int    `json:"count"`
+  Host  string `json:"host"`
 }
 
-type Payload struct {
+type UrlDoc struct {
   Id    string `bson:"_id"`
   Url   string
+  Host  string
   Count int
 }
 
-func main() {
+func createId(s string) string {
+  hasher := md5.New()
+  hasher.Write([]byte(s))
+  return hex.EncodeToString(hasher.Sum(nil))
+}
 
+func updateRecord(id string, coll *mgo.Collection) (result UrlDoc, err error) {
+  result  = UrlDoc{}
+  change := mgo.Change{
+    Update:    bson.M{"$inc": bson.M{"count": 1}},
+    ReturnNew: true,
+  }
+  _, err = coll.Find(bson.M{"_id": id}).Apply(change, &result)
+  return result, err
+}
+
+func findOrCreate(doc UrlDoc, coll *mgo.Collection) (result UrlDoc, err error) {
+  result = UrlDoc{}
+  findErr := coll.Find(bson.M{"_id": doc.Id}).One(&result)
+  if findErr != nil {
+    fmt.Println("Record not found: creating new entry")
+    err = coll.Insert(&doc)
+    result = doc
+  }
+  return result, err
+}
+
+func main() {
   mongo, err := mgo.Dial("localhost")
   if err != nil {
-    fmt.Println(err)
+    panic(err)
   }
-
   defer mongo.Close()
   mongo.SetMode(mgo.Monotonic, true)
-
   coll := mongo.DB("test").C("urls")
 
   router := gin.Default()
@@ -40,13 +68,7 @@ func main() {
   })
 
   router.GET("/shorten/:id", func(c *gin.Context) {
-    id     := c.Params.ByName("id")
-    result := Payload{}
-    change := mgo.Change{
-      Update: bson.M{"$inc": bson.M{"count": 1}},
-      ReturnNew: true,
-    }
-    _, err := coll.Find(bson.M{"_id": id}).Apply(change, &result)
+    result, err := updateRecord(c.Params.ByName("id"), coll)
     if err != nil {
       c.String(404, "Not Found")
     } else {
@@ -56,40 +78,19 @@ func main() {
 
   router.POST("/shorten", func(c *gin.Context) {
     var json JSONBody
-
     c.Bind(&json)
-
     url, err := url.Parse(json.Url)
     if err != nil || url.Host == "" {
       fmt.Println(err)
       c.String(400, "Malformed Url")
     } else {
-      hasher := md5.New()
-      hasher.Write([]byte(json.Url))
-      id     := hex.EncodeToString(hasher.Sum(nil))
-      result := Payload{}
-      err    := coll.Find(bson.M{"_id": id}).One(&result)
+      id := createId(json.Url)
+      doc := UrlDoc{id, json.Url, url.Host, 1}
+      result, err := findOrCreate(doc, coll)
       if err != nil {
-        fmt.Println("Record not found: creating new entry")
-        result = Payload{id, json.Url, 1}
-        err = coll.Insert(&result)
-        if err != nil {
-          fmt.Println(err)
-        }
-      } else {
-        fmt.Println("Found result " + result.Url)
+        fmt.Println(err)
       }
-
-      var msg struct {
-        Path  string `json:"path"`
-        Count int    `json:"count"`
-        Host  string `json:"host"`
-      }
-
-      msg.Path  = id
-      msg.Host  = result.Url
-      msg.Count = result.Count
-
+      msg := JSONBody{result.Url, result.Id, result.Count, result.Host}
       c.JSON(200, msg)
     }
   })
