@@ -40,9 +40,14 @@ func updateRecord(id string, coll *mgo.Collection) (result UrlDoc, err error) {
   return result, err
 }
 
-func findOrCreate(doc UrlDoc, coll *mgo.Collection) (result UrlDoc, err error) {
+func findRecord(doc UrlDoc, coll *mgo.Collection) (result UrlDoc, err error) {
   result = UrlDoc{}
-  findErr := coll.Find(bson.M{"_id": doc.Id}).One(&result)
+  err = coll.Find(bson.M{"_id": doc.Id}).One(&result)
+  return result, err
+}
+
+func findOrCreateRecord(doc UrlDoc, coll *mgo.Collection) (result UrlDoc, err error) {
+  result, findErr := findRecord(doc, coll)
   if findErr != nil {
     fmt.Println("Record not found: creating new entry")
     err = coll.Insert(&doc)
@@ -76,6 +81,17 @@ func main() {
     }
   })
 
+  router.GET("/info/:id", func(c *gin.Context) {
+    doc := UrlDoc{c.Params.ByName("id"), "", "", 1}
+    result, err := findRecord(doc, coll)
+    if err != nil {
+      c.String(404, "Not Found")
+    } else {
+      msg := JSONBody{result.Url, result.Id, result.Count, result.Host}
+      c.JSON(200, msg)
+    }
+  })
+
   router.POST("/shorten", func(c *gin.Context) {
     var json JSONBody
     c.Bind(&json)
@@ -86,7 +102,7 @@ func main() {
     } else {
       id := createId(json.Url)
       doc := UrlDoc{id, json.Url, url.Host, 1}
-      result, err := findOrCreate(doc, coll)
+      result, err := findOrCreateRecord(doc, coll)
       if err != nil {
         fmt.Println(err)
       }
